@@ -175,6 +175,19 @@ def extract_sections(soup: BeautifulSoup) -> dict[str, str]:
     return {k: "\n\n".join(v) for k, v in buckets.items()}
 
 
+FOOTER_PAT = re.compile(
+    r"\n*[-—–]*\s*\n*(adiy[eē]n\b|archived in|prameyam \(goal\)|pramāṇam \(scriptures\)"
+    r"|pramātā \(preceptors\)|Education/Kids Portal|granthams\.koyil\.org"
+    r"|koyil\.org|acharyas\.koyil\.org|pillai\.koyil\.org).*$",
+    re.I | re.S,
+)
+
+
+def strip_footer(text: str) -> str:
+    """Remove site footer lines that may leak into Claude's rewritten output."""
+    return FOOTER_PAT.sub("", text).rstrip()
+
+
 # ─── Claude Rewrite via claude_agent_sdk ──────────────────────────────────────
 async def rewrite_section_async(
     section_key: str,
@@ -205,7 +218,7 @@ async def rewrite_section_async(
                 if isinstance(message, ResultMessage):
                     result_text = getattr(message, "result", "") or ""
             await asyncio.sleep(INTER_SECTION_DELAY)
-            return result_text
+            return strip_footer(result_text)
         except Exception as e:
             err = str(e).lower()
             if "rate" in err or "429" in err or "overloaded" in err:
