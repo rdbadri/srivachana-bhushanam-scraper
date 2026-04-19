@@ -132,9 +132,7 @@ def fetch_all_suthram_urls(index_url: str) -> list[tuple[int, str]]:
 
 
 SKIP_PAT = re.compile(
-    r"←|→|Full Series|Previous|Next|Visits:|Share this|Privacy"
-    r"|adiyEn\b|archived in|prameyam \(goal\)|pramANam \(scriptures\)"
-    r"|pramAtA \(preceptors\)|Education/Kids Portal",
+    r"←|→|Full Series|Previous|Next|Visits:|Share this|Privacy|adiy[eē]n\b",
     re.I,
 )
 SECTION_PATS = [
@@ -175,16 +173,11 @@ def extract_sections(soup: BeautifulSoup) -> dict[str, str]:
     return {k: "\n\n".join(v) for k, v in buckets.items()}
 
 
-FOOTER_PAT = re.compile(
-    r"\n*[-—–]*\s*\n*(adiy[eē]n\b|archived in|prameyam \(goal\)|pramāṇam \(scriptures\)"
-    r"|pramātā \(preceptors\)|Education/Kids Portal|granthams\.koyil\.org"
-    r"|koyil\.org|acharyas\.koyil\.org|pillai\.koyil\.org).*$",
-    re.I | re.S,
-)
+FOOTER_PAT = re.compile(r"\n*[-—–\s]*\nadiy[eē]n\b.*$", re.I | re.S)
 
 
 def strip_footer(text: str) -> str:
-    """Remove site footer lines that may leak into Claude's rewritten output."""
+    """Cut everything from 'adiyēn …' onwards — that line starts the site footer."""
     return FOOTER_PAT.sub("", text).rstrip()
 
 
