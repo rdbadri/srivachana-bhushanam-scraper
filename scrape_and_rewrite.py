@@ -54,60 +54,45 @@ SYSTEM_PROMPT = (
     "Śrī Vaiṣṇavism, acting as a theological editor grounded in Śrī Vaiṣṇava Sampradāya tradition."
 )
 
-REWRITE_TEMPLATE = """\
-Your task is to rewrite the following **{section_label}** section of Sūthram {num} \
-from Śrīvachana Bhūṣaṇam into a more polished, coherent, and eloquent form.
+COMBINED_TEMPLATE = """\
+Rewrite all four sections of Sūthram {num} from Śrīvachana Bhūṣaṇam. \
+Return ONLY a valid JSON object with exactly these four keys: \
+"avatharikai", "suthram_text", "simple_explanation", "vyakyaham". \
+No markdown fences, no commentary before or after — just the raw JSON.
 
-Follow these rules STRICTLY:
+RULES (apply to all sections except suthram_text):
 
-1. **Style**: Formal, reverential Śrī Vaiṣṇava Sampradāya English. Clear, accessible \
-language — avoid unnecessarily complex words.
-
-2. **No Summarization or Invention**: Retain ALL original information without omission. \
-Expand and elaborate only on what is explicitly stated. Do NOT introduce theological \
-concepts, texts, or doctrines that are not present in the source text.
-
+1. **Style**: Formal, reverential Śrī Vaiṣṇava Sampradāya English. Clear and accessible — avoid unnecessarily complex words.
+2. **No Summarization or Invention**: Retain ALL original information. Expand only what is explicitly stated. Do NOT introduce theological concepts absent from the source.
 3. **Theological Accuracy**: Accurate per Viśiṣṭādvaita philosophy.
-
-4. **Structure**: If a word is followed by its meaning or definition, retain that structure intact.
-
-5. **Terminology & Transliteration**:
+4. **Structure**: If a word is followed by its meaning, retain that word-meaning structure.
+5. **Terminology & Transliteration** (all sections):
    - Always refer to Srīman Nārāyaṇa. Retain names like Namperumāḷ, Āzhvār, etc.
    - Convert ALL source-language words to Roman IAST.
-   - EXCEPTION — retroflex stop: Use **'d'** instead of 'ṭ' (e.g., 'adiyēn' not 'aṭiyēn').
-   - EXCEPTION — Tamil 'ḻ': Use **'zh'** instead of 'ḻ' (e.g., 'āzhvār' not 'āḻvār').
-   - EXCEPTION — Piraṭṭi: **Always keep 'Piraṭṭi' with 'ṭ'.** Never write 'Piraddi'. \
-This is non-negotiable.
-   - Terminology: 'centum' → 'decade'; 'decad' → 'chapter'; 'decads' → 'chapters'.
+   - Use 'd' instead of 'ṭ' (e.g., 'adiyēn' not 'aṭiyēn').
+   - Use 'zh' instead of 'ḻ' (e.g., 'āzhvār' not 'āḻvār').
+   - EXCEPTION — Piraṭṭi: always keep 'Piraṭṭi' with 'ṭ'. Never write 'Piraddi'.
+   - Replace 'centum'→'decade', 'decad'→'chapter', 'decads'→'chapters'.
+6. **Formatting**: Rich Markdown (bold, italics, paragraph breaks). Multiple paragraphs.
+7. **Cadence**: Vary sentence length and structure. Avoid robotic repetition.
 
-6. **Formatting**: Use rich Markdown (bold, italics, paragraph breaks) for readability. \
-Multiple paragraphs required.
+SPECIAL RULE for "suthram_text" ONLY:
+- Convert the aphorism to IAST and wrap in italics.
+- ONE line only. No explanation, no elaboration, no commentary whatsoever.
 
-7. **CRITICAL — Direct Output**: Begin immediately with the rewritten content. \
-Do NOT start with "As an AI…", "As a theological editor…", or any meta-commentary.
+SOURCE SECTIONS:
 
-8. **Human-like Cadence**: Vary sentence length and structure. Avoid robotic, \
-repetitive patterns.
+### avatharikai
+{avatharikai}
 
-Section to rewrite:
+### suthram_text
+{suthram_text}
 
-{text}"""
+### simple_explanation
+{simple_explanation}
 
-SUTHRAM_TEXT_TEMPLATE = """\
-Convert the following sūthram aphorism into Roman IAST and render it in italics. \
-Nothing else — no explanation, no elaboration, no commentary.
-
-Transliteration rules:
-- Full Roman IAST
-- Use 'd' instead of 'ṭ' (e.g., 'adiyēn' not 'aṭiyēn')
-- Use 'zh' instead of 'ḻ' (e.g., 'āzhvār' not 'āḻvār')
-- EXCEPTION: Keep 'Piraṭṭi' with 'ṭ' — never change to 'Piraddi'
-
-Output format: one line, in italics, starting with '*' and ending with '*'.
-
-Aphorism:
-
-{text}"""
+### vyakyaham
+{vyakyaham}"""
 
 
 # ─── Web Scraping ───────────────────────────────────────────────────────────────
@@ -202,23 +187,18 @@ def strip_footer(text: str) -> str:
 
 
 # ─── Claude Rewrite via claude_agent_sdk ──────────────────────────────────────
-async def rewrite_section_async(
-    section_key: str,
-    text: str,
+async def rewrite_suthram_async(
+    raw: dict[str, str],
     suthram_no: int,
     retries: int = 4,
-) -> str:
-    if not text.strip():
-        return ""
-
-    if section_key == "suthram_text":
-        prompt = SUTHRAM_TEXT_TEMPLATE.format(text=text)
-    else:
-        prompt = REWRITE_TEMPLATE.format(
-            section_label=SECTION_LABELS[section_key],
-            num=suthram_no,
-            text=text,
-        )
+) -> dict[str, str]:
+    prompt = COMBINED_TEMPLATE.format(
+        num=suthram_no,
+        avatharikai=raw.get("avatharikai", "") or "(not present)",
+        suthram_text=raw.get("suthram_text", "") or "(not present)",
+        simple_explanation=raw.get("simple_explanation", "") or "(not present)",
+        vyakyaham=raw.get("vyakyaham", "") or "(not present)",
+    )
 
     options = ClaudeAgentOptions(
         model=MODEL,
@@ -233,8 +213,15 @@ async def rewrite_section_async(
             async for message in query(prompt=prompt, options=options):
                 if isinstance(message, ResultMessage):
                     result_text = getattr(message, "result", "") or ""
-            await asyncio.sleep(INTER_SECTION_DELAY)
-            return strip_footer(result_text)
+
+            # Strip any markdown fences Claude might add despite instructions
+            cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", result_text.strip())
+            parsed = json.loads(cleaned)
+            return {k: strip_footer(parsed.get(k, "")) for k in SECTION_KEYS}
+
+        except json.JSONDecodeError:
+            print(f"  [warn] JSON parse failed (attempt {attempt+1}), retrying…", flush=True)
+            await asyncio.sleep(10)
         except Exception as e:
             err = str(e).lower()
             if "rate" in err or "429" in err or "overloaded" in err:
@@ -246,8 +233,9 @@ async def rewrite_section_async(
                 await asyncio.sleep(10)
             else:
                 print(f"  [error] Failed after {retries} attempts: {e}", flush=True)
-                return f"[Rewrite failed: {e}]"
-    return ""
+                return {k: f"[Rewrite failed: {e}]" for k in SECTION_KEYS}
+
+    return {k: "[Rewrite failed: max retries]" for k in SECTION_KEYS}
 
 
 # ─── Progress & Output ──────────────────────────────────────────────────────────
@@ -311,18 +299,8 @@ async def process_suthram(num: int, url: str) -> dict[str, str] | None:
         print(f"  [warn] No content extracted for sūthram {num}", flush=True)
         return None
 
-    rewritten: dict[str, str] = {}
-    for key in SECTION_KEYS:
-        src = raw.get(key, "").strip()
-        if src:
-            print(f"    Rewriting {SECTION_LABELS[key]}…", flush=True)
-            rewritten[key] = await rewrite_section_async(
-                key, src, num
-            )
-        else:
-            rewritten[key] = ""
-
-    return rewritten
+    print(f"    Rewriting all sections in one call…", flush=True)
+    return await rewrite_suthram_async(raw, num)
 
 
 # ─── Main ───────────────────────────────────────────────────────────────────────
