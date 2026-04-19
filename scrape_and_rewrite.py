@@ -63,8 +63,9 @@ Follow these rules STRICTLY:
 1. **Style**: Formal, reverential Śrī Vaiṣṇava Sampradāya English. Clear, accessible \
 language — avoid unnecessarily complex words.
 
-2. **No Summarization**: Retain ALL original information without omission. Expand and \
-elaborate where appropriate.
+2. **No Summarization or Invention**: Retain ALL original information without omission. \
+Expand and elaborate only on what is explicitly stated. Do NOT introduce theological \
+concepts, texts, or doctrines that are not present in the source text.
 
 3. **Theological Accuracy**: Accurate per Viśiṣṭādvaita philosophy.
 
@@ -131,7 +132,10 @@ def fetch_all_suthram_urls(index_url: str) -> list[tuple[int, str]]:
 
 
 SKIP_PAT = re.compile(
-    r"←|→|Full Series|Previous|Next|Visits:|Share this|Privacy|adiyEn's", re.I
+    r"←|→|Full Series|Previous|Next|Visits:|Share this|Privacy"
+    r"|adiyEn\b|archived in|prameyam \(goal\)|pramANam \(scriptures\)"
+    r"|pramAtA \(preceptors\)|Education/Kids Portal",
+    re.I,
 )
 SECTION_PATS = [
     (re.compile(r"\bavath[Aa]r[Ii]kai\b|\bIntroduction\b", re.I), "avatharikai"),
