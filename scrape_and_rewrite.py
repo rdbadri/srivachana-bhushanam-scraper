@@ -127,6 +127,15 @@ def fetch_all_suthram_urls(index_url: str) -> list[tuple[int, str]]:
             if num not in seen:
                 seen.add(num)
                 result.append((num, href))
+    # Sūthrams missing from the index page — added manually
+    MISSING = {
+        137: "https://granthams.koyil.org/2021/06/21/srivachana-bhushanam-suthram-137-english/",
+    }
+    for num, url in MISSING.items():
+        if num not in seen:
+            seen.add(num)
+            result.append((num, url))
+
     result.sort()
     print(f"  Found {len(result)} sūthrams.", flush=True)
     return result
