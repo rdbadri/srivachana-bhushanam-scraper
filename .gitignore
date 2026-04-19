@@ -1,0 +1,16 @@
+# Environment & secrets
+.env
+
+# Python virtualenvs
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Runtime output (generated files — not source code)
+srivachana_bhushanam.csv
+progress.json
+suthrams/
+
+# macOS
+.DS_Store
