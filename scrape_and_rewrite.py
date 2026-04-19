@@ -93,6 +93,22 @@ Section to rewrite:
 
 {text}"""
 
+SUTHRAM_TEXT_TEMPLATE = """\
+Convert the following sūthram aphorism into Roman IAST and render it in italics. \
+Nothing else — no explanation, no elaboration, no commentary.
+
+Transliteration rules:
+- Full Roman IAST
+- Use 'd' instead of 'ṭ' (e.g., 'adiyēn' not 'aṭiyēn')
+- Use 'zh' instead of 'ḻ' (e.g., 'āzhvār' not 'āḻvār')
+- EXCEPTION: Keep 'Piraṭṭi' with 'ṭ' — never change to 'Piraddi'
+
+Output format: one line, in italics, starting with '*' and ending with '*'.
+
+Aphorism:
+
+{text}"""
+
 
 # ─── Web Scraping ───────────────────────────────────────────────────────────────
 def fetch_page(url: str, retries: int = 4) -> BeautifulSoup:
@@ -195,11 +211,14 @@ async def rewrite_section_async(
     if not text.strip():
         return ""
 
-    prompt = REWRITE_TEMPLATE.format(
-        section_label=SECTION_LABELS[section_key],
-        num=suthram_no,
-        text=text,
-    )
+    if section_key == "suthram_text":
+        prompt = SUTHRAM_TEXT_TEMPLATE.format(text=text)
+    else:
+        prompt = REWRITE_TEMPLATE.format(
+            section_label=SECTION_LABELS[section_key],
+            num=suthram_no,
+            text=text,
+        )
 
     options = ClaudeAgentOptions(
         model=MODEL,
