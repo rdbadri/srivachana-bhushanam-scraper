@@ -132,7 +132,8 @@ def fetch_all_suthram_urls(index_url: str) -> list[tuple[int, str]]:
 
 
 SKIP_PAT = re.compile(
-    r"←|→|Full Series|Previous|Next|Visits:|Share this|Privacy|adiy[eē]n\b",
+    r"←|→|Full Series|Previous|Next|Visits:|Share this|Privacy"
+    r"|adiy[eē]n\b|koyil\.org|archived in",
     re.I,
 )
 SECTION_PATS = [
@@ -173,11 +174,14 @@ def extract_sections(soup: BeautifulSoup) -> dict[str, str]:
     return {k: "\n\n".join(v) for k, v in buckets.items()}
 
 
-FOOTER_PAT = re.compile(r"\n*[-—–\s]*\nadiy[eē]n\b.*$", re.I | re.S)
+FOOTER_PAT = re.compile(
+    r"\n*[-—–\s]*\n(adiy[eē]n\b|koyil\.org|archived in|pram[eēē]yam).*$",
+    re.I | re.S,
+)
 
 
 def strip_footer(text: str) -> str:
-    """Cut everything from 'adiyēn …' onwards — that line starts the site footer."""
+    """Cut everything from the site footer block onwards."""
     return FOOTER_PAT.sub("", text).rstrip()
 
 
