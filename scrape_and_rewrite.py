@@ -223,28 +223,75 @@ async def rewrite_suthram_async(
                 if isinstance(message, ResultMessage):
                     result_text = getattr(message, "result", "") or ""
 
-            # Strip any markdown fences Claude might add despite instructions
             cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", result_text.strip())
             parsed = json.loads(cleaned)
             return {k: strip_footer(parsed.get(k, "")) for k in SECTION_KEYS}
 
         except json.JSONDecodeError:
-            print(f"  [warn] JSON parse failed (attempt {attempt+1}), retrying…", flush=True)
-            await asyncio.sleep(10)
+            print(f"  [warn] JSON parse failed (attempt {attempt+1}/{retries}), retrying…", flush=True)
+            await asyncio.sleep(15)
         except Exception as e:
             err = str(e).lower()
-            if "rate" in err or "429" in err or "overloaded" in err:
+            is_rate = "rate" in err or "429" in err or "overloaded" in err
+            is_cli  = "exit code" in err or "command failed" in err or "message reader" in err
+            if is_rate:
                 wait = RATE_LIMIT_PAUSE * (attempt + 1)
                 print(f"  [rate] Rate limit — waiting {wait:.0f}s", flush=True)
                 await asyncio.sleep(wait)
+            elif is_cli and attempt < retries - 1:
+                wait = 20 * (attempt + 1)
+                print(f"  [cli-err] Subprocess error (attempt {attempt+1}/{retries}), waiting {wait}s: {e}", flush=True)
+                await asyncio.sleep(wait)
             elif attempt < retries - 1:
-                print(f"  [retry] {e}", flush=True)
-                await asyncio.sleep(10)
+                print(f"  [retry] attempt {attempt+1}/{retries}: {e}", flush=True)
+                await asyncio.sleep(15)
             else:
-                print(f"  [error] Failed after {retries} attempts: {e}", flush=True)
-                return {k: f"[Rewrite failed: {e}]" for k in SECTION_KEYS}
+                break
 
-    return {k: "[Rewrite failed: max retries]" for k in SECTION_KEYS}
+    # Combined call exhausted — fall back to one API call per section
+    print(f"  [fallback] Combined call failed — retrying section by section…", flush=True)
+    return await rewrite_suthram_fallback(raw, suthram_no)
+
+
+async def rewrite_suthram_fallback(raw: dict[str, str], suthram_no: int) -> dict[str, str]:
+    """Fall back to one API call per section when the combined call fails."""
+    SECTION_PROMPTS = {
+        "suthram_text": lambda t: (
+            f"Convert this sūthram aphorism to IAST italics only — no commentary:\n\n{t}"
+        ),
+    }
+    RULES = (
+        "Śrī Vaiṣṇava Sampradāya English. Full IAST (d for ṭ, zh for ḻ, keep Piraṭṭi). "
+        "No omissions. Rich Markdown. No preamble."
+    )
+
+    options = ClaudeAgentOptions(model=MODEL, system_prompt=SYSTEM_PROMPT,
+                                 allowed_tools=[], max_turns=1)
+    results: dict[str, str] = {}
+    for key in SECTION_KEYS:
+        src = raw.get(key, "").strip()
+        if not src:
+            results[key] = ""
+            continue
+        if key in SECTION_PROMPTS:
+            prompt = SECTION_PROMPTS[key](src)
+        else:
+            prompt = f"Rewrite this {SECTION_LABELS[key]} per these rules: {RULES}\n\n{src}"
+        for attempt in range(4):
+            try:
+                result_text = ""
+                async for message in query(prompt=prompt, options=options):
+                    if isinstance(message, ResultMessage):
+                        result_text = getattr(message, "result", "") or ""
+                results[key] = strip_footer(result_text)
+                await asyncio.sleep(INTER_SECTION_DELAY)
+                break
+            except Exception as e:
+                print(f"  [fallback-retry] {key} attempt {attempt+1}: {e}", flush=True)
+                await asyncio.sleep(20 * (attempt + 1))
+        else:
+            results[key] = f"[Rewrite failed]"
+    return results
 
 
 # ─── Progress & Output ──────────────────────────────────────────────────────────
